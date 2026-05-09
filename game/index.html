@@ -1,0 +1,391 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FPS Game</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { display: flex; justify-content: center; align-items: center; height: 100vh; background: #000; font-family: Arial; }
+        #gameContainer { position: relative; width: 1000px; height: 600px; background: #1a1a1a; border: 2px solid #00ff00; box-shadow: 0 0 20px #00ff00; }
+        canvas { display: block; width: 100%; height: 100%; }
+        #hud { position: absolute; top: 10px; left: 10px; color: #00ff00; font-family: monospace; z-index: 100; font-size: 14px; }
+        .hud-item { margin: 5px 0; padding: 5px 10px; background: rgba(0,0,0,0.7); border: 1px solid #00ff00; }
+        #ammo { position: absolute; bottom: 20px; right: 20px; color: #ffff00; font-family: monospace; background: rgba(0,0,0,0.7); padding: 15px; border: 2px solid #ffff00; font-size: 16px; z-index: 100; }
+        #shop { position: absolute; bottom: 20px; left: 20px; color: #00ff00; font-family: monospace; background: rgba(0,0,0,0.9); padding: 15px; border: 2px solid #00ff00; font-size: 14px; z-index: 100; width: 250px; max-height: 400px; overflow-y: auto; }
+        #gameOver { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); background: rgba(0,0,0,0.95); padding: 40px; border: 2px solid #ff0000; color: #ff0000; text-align: center; z-index: 200; display: none; font-family: monospace; }
+        #gameOver h1 { margin-bottom: 20px; font-size: 36px; }
+        #gameOver p { margin: 10px 0; }
+        #gameOver button { margin-top: 20px; padding: 10px 20px; background: #ff0000; color: #000; border: none; cursor: pointer; font-size: 14px; font-weight: bold; }
+        #gameOver button:hover { background: #ff3333; }
+        #bossBar { position: absolute; top: 20px; right: 20px; color: #ff00ff; font-family: monospace; background: rgba(0,0,0,0.7); padding: 10px; border: 2px solid #ff00ff; display: none; z-index: 100; }
+        #bossHealthBar { width: 200px; height: 20px; background: #000; border: 1px solid #ff00ff; margin-top: 5px; }
+        #bossHealth { height: 100%; background: #ff00ff; width: 100%; }
+    </style>
+</head>
+<body>
+    <div id="gameContainer">
+        <canvas id="gameCanvas"></canvas>
+        
+        <div id="hud">
+            <div class="hud-item">HP: <span id="hp">100</span>/100</div>
+            <div class="hud-item">SCORE: <span id="score">0</span></div>
+            <div class="hud-item">WAVE: <span id="wave">1</span>/30</div>
+            <div class="hud-item">KILLS: <span id="kills">0</span></div>
+            <div class="hud-item">MONEY: $<span id="money">0</span></div>
+        </div>
+
+        <div id="ammo">
+            AMMO: <span id="ammoCount">30</span>/120<br>
+            <span style="font-size: 12px;">B: SHOP</span>
+        </div>
+
+        <div id="shop" style="display: none;">
+            <div style="color: #00ff00; font-size: 18px; margin-bottom: 15px;">===== SHOP =====</div>
+            
+            <div style="margin: 15px 0; padding: 10px; border: 1px solid #00ff00;">
+                <div style="color: #ffff00;">💊 HEAL POTION - $50</div>
+                <div style="font-size: 12px; color: #aaa;">+50 HP</div>
+                <button onclick="buyHeal()" style="margin-top: 5px; padding: 5px 15px; background: #00ff00; color: #000; border: none; cursor: pointer; font-weight: bold;">BUY</button>
+            </div>
+
+            <div style="margin: 15px 0; padding: 10px; border: 1px solid #00ff00;">
+                <div style="color: #ffff00;">🔫 WEAPON UP - $100</div>
+                <div style="font-size: 12px; color: #aaa;">+20% DMG</div>
+                <button onclick="buyWeapon()" style="margin-top: 5px; padding: 5px 15px; background: #00ff00; color: #000; border: none; cursor: pointer; font-weight: bold;">BUY</button>
+            </div>
+
+            <div style="margin: 15px 0; padding: 10px; border: 1px solid #00ff00;">
+                <div style="color: #ffff00;">⚡ AMMO PACK - $75</div>
+                <div style="font-size: 12px; color: #aaa;">Full Ammo</div>
+                <button onclick="buyAmmo()" style="margin-top: 5px; padding: 5px 15px; background: #00ff00; color: #000; border: none; cursor: pointer; font-weight: bold;">BUY</button>
+            </div>
+
+            <div style="margin-top: 20px; padding-top: 10px; border-top: 1px solid #00ff00; font-size: 12px; color: #aaa;">
+                Press B to close
+            </div>
+        </div>
+
+        <div id="bossBar" style="display: none;">
+            <div style="color: #ff00ff; font-weight: bold;">BOSS</div>
+            <div id="bossHealthBar">
+                <div id="bossHealth" style="width: 100%;"></div>
+            </div>
+        </div>
+
+        <div id="gameOver">
+            <h1>GAME OVER</h1>
+            <p>Score: <span id="finalScore">0</span></p>
+            <p>Kills: <span id="finalKills">0</span></p>
+            <p>Wave: <span id="finalWave">1</span>/30</p>
+            <p>Money: $<span id="finalMoney">0</span></p>
+            <button onclick="location.reload()">Restart</button>
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        canvas.width = 1000;
+        canvas.height = 600;
+
+        const player = { x: 500, y: 300, w: 20, h: 20, angle: 0, hp: 100, maxHp: 100, speed: 4, ammo: 30, maxAmmo: 30, cooldown: 0, score: 0, kills: 0, wave: 1, money: 0, weaponDamage: 1.0 };
+        const game = { enemies: [], bullets: [], particles: [], spawnTime: 0, waveTime: 0, difficulty: 1, running: true, maxWave: 30, shopOpen: false, boss: null, bossSpawned: false };
+        const keys = {};
+
+        window.addEventListener('keydown', (e) => keys[e.key.toLowerCase()] = true);
+        window.addEventListener('keyup', (e) => {
+            keys[e.key.toLowerCase()] = false;
+            if (e.key.toLowerCase() === 'b') {
+                game.shopOpen = !game.shopOpen;
+                document.getElementById('shop').style.display = game.shopOpen ? 'block' : 'none';
+            }
+        });
+
+        let mouseX = 500, mouseY = 300;
+        canvas.addEventListener('mousemove', (e) => {
+            const rect = canvas.getBoundingClientRect();
+            mouseX = e.clientX - rect.left;
+            mouseY = e.clientY - rect.top;
+        });
+
+        canvas.addEventListener('click', shoot);
+
+        class Enemy {
+            constructor(x, y, isBoss = false) {
+                this.x = x; this.y = y; this.w = isBoss ? 40 : 16; this.h = isBoss ? 40 : 16;
+                this.isBoss = isBoss;
+                if (isBoss) {
+                    this.hp = 500 + player.wave * 100;
+                    this.speed = 1.5 + game.difficulty * 0.2;
+                    this.moneyDrop = 500 + player.wave * 50;
+                } else {
+                    this.hp = 20 + player.wave * 5 + game.difficulty * 3;
+                    this.speed = 2 + game.difficulty * 0.3;
+                    this.moneyDrop = 10 + Math.floor(player.wave * 2);
+                }
+                this.maxHp = this.hp;
+                this.shootTime = 0;
+            }
+
+            update() {
+                const dx = player.x - this.x, dy = player.y - this.y;
+                const dist = Math.sqrt(dx * dx + dy * dy);
+                if (dist > 0) {
+                    this.x += (dx / dist) * this.speed;
+                    this.y += (dy / dist) * this.speed;
+                }
+                this.shootTime--;
+                if (this.shootTime <= 0 && dist < 400) {
+                    const bx = (dx / dist) * 3, by = (dy / dist) * 3;
+                    game.bullets.push({ x: this.x, y: this.y, vx: bx, vy: by, dmg: 15, enemy: true, life: 200 });
+                    this.shootTime = 100;
+                }
+            }
+
+            draw() {
+                if (this.isBoss) {
+                    ctx.fillStyle = '#ff00ff';
+                    ctx.fillRect(this.x - 20, this.y - 20, 40, 40);
+                    ctx.fillStyle = '#ffff00';
+                    ctx.fillRect(this.x - 25, this.y - 28, 50 * (this.hp / this.maxHp), 4);
+                } else {
+                    ctx.fillStyle = '#ff3333';
+                    ctx.fillRect(this.x - 8, this.y - 8, 16, 16);
+                    ctx.fillStyle = '#00ff00';
+                    ctx.fillRect(this.x - 10, this.y - 12, 20 * (this.hp / this.maxHp), 3);
+                }
+            }
+        }
+
+        function updatePlayer() {
+            if (keys['w']) player.y -= player.speed;
+            if (keys['s']) player.y += player.speed;
+            if (keys['a']) player.x -= player.speed;
+            if (keys['d']) player.x += player.speed;
+            player.x = Math.max(20, Math.min(980, player.x));
+            player.y = Math.max(20, Math.min(580, player.y));
+            const dx = mouseX - player.x, dy = mouseY - player.y;
+            player.angle = Math.atan2(dy, dx);
+            player.cooldown--;
+            if (keys['r']) player.ammo = player.maxAmmo;
+        }
+
+        function shoot() {
+            if (player.ammo > 0 && player.cooldown <= 0) {
+                player.ammo--;
+                player.cooldown = 10;
+                const bx = Math.cos(player.angle) * 6, by = Math.sin(player.angle) * 6;
+                game.bullets.push({ 
+                    x: player.x + Math.cos(player.angle) * 10, 
+                    y: player.y + Math.sin(player.angle) * 10, 
+                    vx: bx, vy: by, dmg: 25, enemy: false, life: 300 
+                });
+            }
+        }
+
+        function update() {
+            if (!game.running) return;
+            if (game.shopOpen) return;
+            
+            updatePlayer();
+
+            game.spawnTime++;
+            game.waveTime++;
+            
+            // Wave가 올라갈수록 길어지게 (1웨이브: 30초, 2웨이브: 40초, 3웨이브: 50초...)
+            const waveDuration = 300 + player.wave * 100;
+            
+            if (game.waveTime > waveDuration && player.wave < game.maxWave) {
+                player.wave++;
+                game.waveTime = 0;
+                game.difficulty += 0.3;
+                game.bossSpawned = false;
+            }
+
+            if (player.wave === game.maxWave && !game.bossSpawned) {
+                game.boss = new Enemy(player.x + 300, player.y + 300, true);
+                game.enemies.push(game.boss);
+                game.bossSpawned = true;
+            }
+
+            if (game.spawnTime > 60 - player.wave && player.wave !== game.maxWave) {
+                const angle = Math.random() * Math.PI * 2;
+                game.enemies.push(new Enemy(
+                    player.x + Math.cos(angle) * 400,
+                    player.y + Math.sin(angle) * 400
+                ));
+                game.spawnTime = 0;
+            }
+
+            game.enemies.forEach(e => e.update());
+
+            game.bullets = game.bullets.filter(b => {
+                b.x += b.vx; b.y += b.vy; b.life--;
+                return b.life > 0 && b.x > 0 && b.x < 1000 && b.y > 0 && b.y < 600;
+            });
+
+            for (let i = game.bullets.length - 1; i >= 0; i--) {
+                const b = game.bullets[i];
+                if (b.enemy) continue;
+                for (let j = game.enemies.length - 1; j >= 0; j--) {
+                    const e = game.enemies[j];
+                    const dx = b.x - e.x, dy = b.y - e.y;
+                    if (Math.sqrt(dx * dx + dy * dy) < (e.isBoss ? 30 : 12)) {
+                        e.hp -= b.dmg * player.weaponDamage;
+                        if (e.hp <= 0) {
+                            player.score += (e.isBoss ? 5000 : 100) + player.wave * 10;
+                            player.kills++;
+                            player.money += e.moneyDrop;
+                            if (e.isBoss) game.boss = null;
+                            game.enemies.splice(j, 1);
+                            for (let k = 0; k < 10; k++) {
+                                const a = Math.random() * Math.PI * 2;
+                                game.particles.push({
+                                    x: e.x, y: e.y, vx: Math.cos(a) * 2, vy: Math.sin(a) * 2,
+                                    color: '#ff3333', life: 30
+                                });
+                            }
+                        }
+                        game.bullets.splice(i, 1);
+                        break;
+                    }
+                }
+            }
+
+            for (let i = game.bullets.length - 1; i >= 0; i--) {
+                const b = game.bullets[i];
+                if (!b.enemy) continue;
+                const dx = b.x - player.x, dy = b.y - player.y;
+                if (Math.sqrt(dx * dx + dy * dy) < 15) {
+                    player.hp -= b.dmg;
+                    game.bullets.splice(i, 1);
+                    if (player.hp <= 0) endGame();
+                }
+            }
+
+            game.enemies.forEach(e => {
+                const dx = player.x - e.x, dy = player.y - e.y;
+                if (Math.sqrt(dx * dx + dy * dy) < 20) {
+                    player.hp -= 0.3;
+                    if (player.hp <= 0) endGame();
+                }
+            });
+
+            game.particles = game.particles.filter(p => {
+                p.x += p.vx; p.y += p.vy; p.vy += 0.3; p.life--;
+                return p.life > 0;
+            });
+        }
+
+        function draw() {
+            ctx.fillStyle = '#0a0a0a';
+            ctx.fillRect(0, 0, 1000, 600);
+
+            ctx.strokeStyle = '#1a1a1a';
+            for (let i = 0; i < 1000; i += 50) {
+                ctx.beginPath(); ctx.moveTo(i, 0); ctx.lineTo(i, 600); ctx.stroke();
+            }
+            for (let i = 0; i < 600; i += 50) {
+                ctx.beginPath(); ctx.moveTo(0, i); ctx.lineTo(1000, i); ctx.stroke();
+            }
+
+            ctx.fillStyle = '#00ff00';
+            ctx.fillRect(player.x - 10, player.y - 10, 20, 20);
+            ctx.strokeStyle = '#00ff00';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.moveTo(player.x, player.y);
+            ctx.lineTo(player.x + Math.cos(player.angle) * 25, player.y + Math.sin(player.angle) * 25);
+            ctx.stroke();
+
+            game.enemies.forEach(e => e.draw());
+
+            ctx.fillStyle = '#00ff00';
+            game.bullets.forEach(b => {
+                if (!b.enemy) ctx.fillRect(b.x - 2, b.y - 2, 4, 4);
+            });
+            ctx.fillStyle = '#ff9900';
+            game.bullets.forEach(b => {
+                if (b.enemy) ctx.fillRect(b.x - 2, b.y - 2, 4, 4);
+            });
+
+            game.particles.forEach(p => {
+                ctx.globalAlpha = p.life / 30;
+                ctx.fillStyle = p.color;
+                ctx.fillRect(p.x - 2, p.y - 2, 4, 4);
+            });
+            ctx.globalAlpha = 1;
+        }
+
+        function updateHUD() {
+            document.getElementById('hp').textContent = Math.max(0, Math.floor(player.hp));
+            document.getElementById('score').textContent = Math.floor(player.score);
+            document.getElementById('kills').textContent = player.kills;
+            document.getElementById('wave').textContent = player.wave;
+            document.getElementById('money').textContent = player.money;
+            document.getElementById('ammoCount').textContent = player.ammo;
+            
+            if (game.boss && game.boss.hp > 0) {
+                document.getElementById('bossBar').style.display = 'block';
+                const bossHealthPercent = (game.boss.hp / game.boss.maxHp) * 100;
+                document.getElementById('bossHealth').style.width = bossHealthPercent + '%';
+            } else {
+                document.getElementById('bossBar').style.display = 'none';
+            }
+        }
+
+        function buyHeal() {
+            if (player.money >= 50) {
+                player.money -= 50;
+                player.hp = Math.min(player.maxHp, player.hp + 50);
+                alert('Healed!');
+                updateHUD();
+            } else {
+                alert('Not enough money!');
+            }
+        }
+
+        function buyWeapon() {
+            const weaponPrice = 100 + player.wave * 15;
+            if (player.money >= weaponPrice) {
+                player.money -= weaponPrice;
+                player.weaponDamage += 0.2;
+                alert('Weapon upgraded! DMG: +20%');
+                updateHUD();
+            } else {
+                alert(`Not enough money! Cost: $${weaponPrice}`);
+            }
+        }
+
+        function buyAmmo() {
+            if (player.money >= 75) {
+                player.money -= 75;
+                player.ammo = player.maxAmmo;
+                alert('Ammo refilled!');
+                updateHUD();
+            } else {
+                alert('Not enough money!');
+            }
+        }
+
+        function endGame() {
+            game.running = false;
+            document.getElementById('gameOver').style.display = 'block';
+            document.getElementById('finalScore').textContent = Math.floor(player.score);
+            document.getElementById('finalKills').textContent = player.kills;
+            document.getElementById('finalWave').textContent = player.wave;
+            document.getElementById('finalMoney').textContent = player.money;
+        }
+
+        function gameLoop() {
+            update();
+            draw();
+            updateHUD();
+            requestAnimationFrame(gameLoop);
+        }
+
+        gameLoop();
+    </script>
+</body>
+</html>
